@@ -6,6 +6,6 @@ def plot_row(imgs, vmin_vmax=None, cell_size=5):
 
     for ax, im in zip(axs, imgs):
         if vmin_vmax is not None:
-            ax.imshow(im, vmin=vmin_vmax[0], vmax=vmin_vmax[1])
+            ax.imshow(im, vmin=vmin_vmax[0], vmax=vmin_vmax[1],cmap='gray')
         else:
             ax.imshow(im)

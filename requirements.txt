@@ -8,3 +8,4 @@ albumentations
 torch
 torchvision
 torchmetrics
+empatches

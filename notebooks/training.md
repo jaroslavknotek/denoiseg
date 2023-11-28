@@ -5,11 +5,11 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.5
+      jupytext_version: 1.14.6
   kernelspec:
-    display_name: denoiseg
+    display_name: torch_cv
     language: python
-    name: denoiseg
+    name: torch_cv
 ---
 
 ```python
@@ -18,16 +18,14 @@ jupyter:
 ```
 
 ```python
+import sys
+sys.path.insert(0,'..')
 import denoiseg.utils as utils
 try:
     print(logger)
 except NameError:
-    logger  = utils.setup_logger(path = 'logs.txt')
-```
-
-```python
-import sys
-sys.path.insert(0,'..')
+    #logger  = utils.setup_logger(path = 'logs.txt')
+    logger  = utils.setup_logger()
 ```
 
 ```python
@@ -36,10 +34,7 @@ import numpy as np
 import pathlib
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-```
-
-```python
-%pwd
+print(device)
 ```
 
 ```python
@@ -148,7 +143,6 @@ if np.log2(patch_size) < model_depth +2:
     logger.warn(
         f"Cannot have crop_size={patch_size} and cnn_depth={model_depth}"
     )
-# train_params['dataset_repeat'] = 1
 # train_params['epochs'] = 5
 # train_params['batch_size'] = 32
 # train_params['model']['depth'] = 5
@@ -173,13 +167,11 @@ model = denoiseg.unet.UNet(
 )
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
-device = None
 checkpoint_path = pathlib.Path('training')/'model-best.pth'
 checkpoint_path.parent.mkdir(exist_ok=True,parents=True)
 
 loss_fn = denoiseg.training.get_loss(
+    'fl', #'bce','dice'
     device = device,
     denoise_loss_weight = train_params['denoise_loss_weight']
 )
@@ -209,7 +201,7 @@ from tqdm.auto import tqdm
 
 import denoiseg.evaluation as ev
 
-predictions, metrics = ev.evaluate_images(model, imgs_test,gts_test)
+predictions, metrics = ev.evaluate_images(model, imgs_test,gts_test,device = device)
 
 print('Mean IoU',np.mean(metrics))
 ```
