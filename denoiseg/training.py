@@ -218,6 +218,10 @@ def train(
     return loss_dict
 
 
+def _get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+    
 def setup_scheduler(optimizer, scheduler_patience):
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, "min", patience=scheduler_patience
@@ -225,6 +229,8 @@ def setup_scheduler(optimizer, scheduler_patience):
 
     def scheduler_fn(validation_loss):
         scheduler.step(validation_loss)
+        lr = _get_lr(optimizer)
+        logger.debug(f"learning rate: {lr}")
 
     return scheduler_fn
 

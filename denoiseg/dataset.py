@@ -57,26 +57,44 @@ class DenoisegDataset(torch.utils.data.Dataset):
 
 
 def setup_dataloader(
-    images, labels, pick_idc, augumentation_fn, patch_size, dataset_repeat, batch_size
+    images, 
+    ground_truths, 
+    pick_idc, 
+    augumentation_fn, 
+    patch_size, 
+    dataset_repeat, 
+    batch_size
 ):
     def index_list_by_list(_list, indices):
         return [_list[i] for i in list(indices)]
 
     picked_imgs = index_list_by_list(images, pick_idc)
-    picked_gts = index_list_by_list(labels, pick_idc)
-
+    picked_gts = index_list_by_list(ground_truths, pick_idc)
+    
     dataset_ = DenoisegDataset(
-        picked_imgs, picked_gts, patch_size, augumentation_fn, repeat=dataset_repeat
+        picked_imgs, 
+        picked_gts, 
+        patch_size, 
+        augumentation_fn, 
+        repeat=dataset_repeat
     )
 
-    return torch.utils.data.DataLoader(dataset_, batch_size=batch_size, shuffle=False)
+    # Shuffle is false because
+    # - validation is not shuffled by design
+    # - train is shuffled by fair split funciton
+    return torch.utils.data.DataLoader(
+        dataset_, 
+        batch_size=batch_size, 
+        shuffle=False
+    )
 
 
 def prepare_dataloaders(images, ground_truths, config):
+    
     train_idc, val_idc = fair_split_train_val_indices_to_batches(
         ground_truths, config["batch_size"], config["validation_set_percentage"]
     )
-
+    
     aug_config = config["augumentation"]
     aug_train = setup_augumentation(
         config["patch_size"],

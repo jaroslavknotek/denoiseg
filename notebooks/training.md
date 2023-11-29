@@ -18,8 +18,6 @@ jupyter:
 ```
 
 ```python
-import sys
-sys.path.insert(0,'..')
 import denoiseg.utils as utils
 try:
     print(logger)
@@ -79,7 +77,7 @@ for img,gt in zip(imgs,gts):
     plt.show()
     break
 
-patch_size = 128
+patch_size = 256
 ```
 
 ```python
@@ -90,6 +88,8 @@ import itertools
 import denoiseg
 
 import denoiseg.dataset as ds
+
+
 
 aug_train = ds.setup_augumentation(
     patch_size,
@@ -112,44 +112,53 @@ ds.sample_ds(dataset,3)
 ```
 
 ```python
-train_params = {
-    "patch_size":128,
-    "validation_set_percentage":.2,
-    "batch_size":32,
-    "dataset_repeat":50,
-    "model":{
-        "filters":8,
-        "depth":5,
-    },
-    #training
-    "epochs":100,
-    "patience":20,
-    "scheduler_patience":10,
-    "denoise_loss_weight":1,
-    
-    "augumentation":{
-        "elastic":True,
-        "brightness_contrast":True,
-        "flip_vertical": True,
-        "flip_horizontal": True,
-        "blur_sharp_power": 1,
-        "noise_val": .01,
-        "rotate_deg": 90
+def get_default_config():
+    return {
+        "patch_size":128,
+        "validation_set_percentage":.2,
+        "batch_size":32,
+        "dataset_repeat":50,
+        "model":{
+            "filters":8,
+            "depth":5,
+        },
+        #training
+        "epochs":100,
+        "patience":20,
+        "scheduler_patience":10,
+        "denoise_loss_weight":.1, # relative weight of denoise loss weight. should be betwee 0-1
+
+        "augumentation":{
+            "elastic":True,
+            "brightness_contrast":True,
+            "flip_vertical": True,
+            "flip_horizontal": True,
+            "blur_sharp_power": 1,
+            "noise_val": .01,
+            "rotate_deg": 90
+        }
     }
+
+default_config = get_default_config()
+user_override = {
+
 }
+train_params = merge_dicts()
+
+#train_params['model']['depth'] = 6
+
 model_depth = train_params['model']['depth']
 patch_size = train_params['patch_size']
+
 if np.log2(patch_size) < model_depth +2:
     logger.warn(
         f"Cannot have crop_size={patch_size} and cnn_depth={model_depth}"
     )
+
+# train_params['dataset_repeat'] = 1
 # train_params['epochs'] = 5
 # train_params['batch_size'] = 32
 # train_params['model']['depth'] = 5
-```
-
-```python
-train_dataloader,val_dataloader = ds.prepare_dataloaders(imgs,gts,train_params)
 ```
 
 # Training
@@ -165,7 +174,7 @@ model = denoiseg.unet.UNet(
     in_channels=3,
     out_channels=4
 )
-
+train_dataloader,val_dataloader = ds.prepare_dataloaders(imgs,gts,train_params)
 
 checkpoint_path = pathlib.Path('training')/'model-best.pth'
 checkpoint_path.parent.mkdir(exist_ok=True,parents=True)
@@ -201,7 +210,13 @@ from tqdm.auto import tqdm
 
 import denoiseg.evaluation as ev
 
-predictions, metrics = ev.evaluate_images(model, imgs_test,gts_test,device = device)
+predictions, metrics = ev.evaluate_images(
+    model, 
+    imgs_test,
+    gts_test,
+    patch_size=patch_size,
+    device = device
+)
 
 print('Mean IoU',np.mean(metrics))
 ```
@@ -209,13 +224,18 @@ print('Mean IoU',np.mean(metrics))
 ```python
 import denoiseg.visualization as vis
 
-for img,gt,pred,met in zip(imgs_test,gts_test,predictions,metrics):
-    show_imgs = [img,gt,*pred]
-    vis.plot_row(show_imgs,vmin_vmax = (0,1))
+for i,(img,gt,pred,met) in enumerate(zip(imgs_test,gts_test,predictions,metrics)):
+    
+    segms = []
+    for im in pred[3:]:
+        im = im.copy()
+        im[im<.5] = 0
+        im[im>=.5] = 1
+        segms.append(im)
+        
+    show_imgs = [img,gt,*segms,*pred]
+    vis.plot_row(show_imgs,vmin_vmax = (0,1),figsize=(20,10))
     plt.suptitle(f'Metric: {met}')
+    plt.savefig(f'fig_{i}.png')
     plt.show()
-```
-
-```python
-
 ```
