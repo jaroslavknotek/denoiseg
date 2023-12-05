@@ -2,8 +2,7 @@ import logging
 
 import numpy as np
 import torch
-from torchmetrics.classification import BinaryJaccardIndex
-
+import denoiseg.metrics as m
 import denoiseg.segmentation as seg
 
 logger = logging.getLogger("denoiseg")
@@ -21,7 +20,7 @@ def evaluate_images(
 ):
     if metric is None:
         logger.info("Using default IOU metric")
-        metric = prepare_iou(foreground_thr = foreground_thr)
+        metric = m.prepare_iou(foreground_thr = foreground_thr)
 
     preds = seg.segment_many(
         model, 
@@ -39,16 +38,4 @@ def evaluate_images(
         metrics.append(metric_res)
     return preds, np.squeeze(metrics)
 
-def prepare_iou(foreground_thr = .5):
-    m = BinaryJaccardIndex(threshold=foreground_thr)
-
-    def met(a, b):
-        a = a.copy()
-        b = b.copy()
-        a[a<foreground_thr] = 0
-        a[a>=foreground_thr] = 1
-        b[b<foreground_thr] =0
-        b[b>=foreground_thr] = 1
-        return m(torch.Tensor(a),torch.Tensor(b))
-    return met
     

@@ -7,6 +7,9 @@ import torch.nn as nn
 from torch.functional import F
 from tqdm.auto import tqdm
 
+from skimage.measure import label
+from scipy.ndimage import distance_transform_edt
+
 import denoiseg.training as tr
 
 logger = logging.getLogger("denoiseg")
@@ -257,12 +260,13 @@ def get_loss(
     def calc_loss(targets, prediction):
         y_segmentation = targets["y_segmentation"]
         has_label = targets["has_label"]
+        weightmap = targets["weightmap"]
 
         pred_segm = prediction[:, -3:]
 
         ls_seg_pure = seg_loss(pred_segm, y_segmentation)
         ls_seg_only_valid = ls_seg_pure * has_label
-        ls_seg = ls_seg_only_valid.mean()
+        loss = (ls_seg_only_valid * weightmap).mean()
     
         if denoise_enabled:
             pred_denoise = prediction[:, 0][:, None, ...]
@@ -273,8 +277,39 @@ def get_loss(
             y_denoise_masked = y_denoise * mask_denoise
             ls_denoise = loss_denoise(y_denoise_masked,pred_denoise_masked)
 
-            return ls_seg  + ls_denoise * denoise_loss_weight
-        else:
-            return ls_seg
+            
+            loss+= ls_denoise * denoise_loss_weight
+        
+        return loss
 
     return calc_loss
+
+
+def unet_weight_map(y, wc=None, w0 = 10, sigma = 5):
+    
+    labels = label(y)
+    no_labels = labels == 0
+    label_ids = sorted(np.unique(labels))[1:]
+
+    if len(label_ids) > 1:
+        distances = np.zeros((y.shape[0], y.shape[1], len(label_ids)))
+
+        for i, label_id in enumerate(label_ids):
+            distances[:,:,i] = distance_transform_edt(labels != label_id)
+
+        distances = np.sort(distances, axis=2)
+        d1 = distances[:,:,0]
+        d2 = distances[:,:,1]
+        w = w0 * np.exp(-1/2*((d1 + d2) / sigma)**2) * no_labels
+        
+        if wc:
+            class_weights = np.zeros_like(y)
+            for k, v in wc.items():
+                class_weights[y == k] = v
+            w = w + class_weights
+        else:
+            w = w +1
+    else:
+        w = np.zeros_like(y)
+    
+    return w

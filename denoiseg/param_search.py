@@ -57,6 +57,8 @@ def search_train(
                 device = device
             )
 
+            fig = vis.plot_loss(out_losses,figsize=(10,10))
+            fig.savefig(checkpoint.parent/'loss_fig.png')
             model = torch.load(checkpoint)
 
             predictions, metrics = ev.evaluate_images(
@@ -83,7 +85,7 @@ def search_train(
             )
             df.to_csv(checkpoint.parent/'metrics.csv')
             
-            results.append((train_params,df))
+            results.append((checkpoint,train_params,df))
         except Exception as e:
             logger.exception(e)
             if raise_on_exc:

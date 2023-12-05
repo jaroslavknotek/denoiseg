@@ -17,6 +17,7 @@ def run_training(
     ground_truths,
     train_params,
     training_output_dir, 
+    weightmaps = None,
     model = None,
     device = 'cpu'
 ):
@@ -35,7 +36,8 @@ def run_training(
     train_dataloader,val_dataloader = ds.prepare_dataloaders(
         images,
         ground_truths,
-        train_params
+        train_params,
+        weightmaps=weightmaps
     )
     if model is None:
         model_params = train_params['model']

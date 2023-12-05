@@ -139,7 +139,7 @@ import denoiseg.evaluation as ev
 import denoiseg.visualization as vis
 import denoiseg.param_search as ps
 
-res = ps.search_train(
+param_results = ps.search_train(
     training_output_root,
     imgs,
     gts,
@@ -152,14 +152,19 @@ res = ps.search_train(
 ```
 
 ```python
+param_results
+```
+
+```python
 import pandas
 import json
 
-metrics_paths = list(training_output_root.rglob("*.csv"))
+
+metrics_paths = [checkpoint.parent/'metrics.csv' for checkpoint,_,_ in param_results]
 params_paths = [p.parent/'training_params.json' for p in metrics_paths]
 metrics = [pd.read_csv(p) for p in metrics_paths]
 mean_metrics = [m['metric'].mean() for m in metrics]
-params = [flatten_dict(json.load(open(p))) for p in params_paths]
+params = [ps.flatten_dict(json.load(open(p))) for p in params_paths]
 ```
 
 ```python

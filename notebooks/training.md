@@ -29,10 +29,12 @@ training_output_root = pathlib.Path(f'../../training/denoiseg-UHCS/')
 ```
 
 ```python
+from tqdm.auto import tqdm
 import imageio
 import matplotlib.pyplot as plt
 import pathlib
 import denoiseg.image_utils as iu
+import denoiseg.training as tr
 
 root = pathlib.Path('../data/UHCS/')
 gt_root = root/'GT_bin'
@@ -57,6 +59,11 @@ imgs_lbl = imgs_lbl[4:]
 
 imgs = imgs_lbl + imgs_unlbl
 gts = gts_lbl + gts_unlbl
+
+total = len([_ for g in gts if g is not None])
+weightmaps =[(tr.unet_weight_map(gt) if gt is not None else None) for gt in tqdm(gts,desc='generating weightmaps',total = total)]
+
+print(f"{len(imgs_lbl)=} {len(imgs_test)=} {len(imgs_unlbl)=} {len(weightmaps)=}")
 ```
 
 ```python
@@ -87,7 +94,8 @@ import denoiseg.visualization as vis
 vis.sample_ds(
     imgs,
     gts,
-    train_params
+    train_params,
+    weightmaps= weightmaps
 )
 ```
 
@@ -101,14 +109,16 @@ checkpoint, out_losses =seg.run_training(
     gts,
     train_params, 
     training_output_root,
-    device = device
+    device = device,
+    weightmaps = weightmaps
 )
 ```
 
 ```python
-plt.plot(out_losses['train_loss'],label='train')
-plt.plot(out_losses['val_loss'],label='val')
-plt.legend()
+import denoiseg.visualization as vis
+
+vis.plot_loss(out_losses)
+plt.show()
 ```
 
 # Evaluate
@@ -133,7 +143,6 @@ print(f'Mean IoU {np.mean(metrics):.5f}')
 ```
 
 ```python
-import denoiseg.visualization as vis
 
 for i,(img,gt,pred,met) in enumerate(zip(imgs_test,gts_test,predictions,metrics)):
     

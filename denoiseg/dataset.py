@@ -13,31 +13,51 @@ logger = logging.getLogger('denoiseg')
 
 
 class DenoisegDataset(torch.utils.data.Dataset):
-    def __init__(self, images, labels, transform, denoise = True):
+    def __init__(
+        self, 
+        images, 
+        labels, 
+        transform, 
+        denoise = True,
+        weightmaps = None
+    ):
         self.images = images
         self.labels = labels
-
+        self.weightmaps = weightmaps
+        assert len(images) == len(labels),f"{len(images)=}!={len(labels)=}"
+        assert weightmaps is None or len(labels) == len(weightmaps),f"{len(weightmaps)=}!={len(labels)=}"
         self.transform = transform
         self.denoise = denoise
+        
 
     def __len__(self):
         return len(self.images)
 
-    def _augument(self, image, label):
-        transformed = self.transform(image=image, mask=label)
+    def _transform(self, image, label,weightmap):
+        cmb = np.dstack([label,weightmap,weightmap])
+        transformed = self.transform(image=image, mask=cmb)
         tr_image = transformed["image"]
-        tr_label = transformed["mask"]
-        return tr_image, tr_label
+        
+        tr_cmp = transformed["mask"]
+        tr_label = tr_cmp[:,:,0]
+        tr_weightmap = tr_cmp[:,:,1]
+        return tr_image, tr_label,tr_weightmap
 
     def __getitem__(self, idx):
         image = self.images[idx]
         label = self.labels[idx]
-
+        
+        weightmap = None
+        if self.weightmaps is not None and self.weightmaps[idx] is not None:
+            weightmap = np.float32(self.weightmaps[idx])
+        if weightmap is None:
+            weightmap = np.ones_like(image,dtype=np.float32)
+        
         has_label = label is not None
         if not has_label:
             label = np.zeros_like(image)
 
-        image_aug, label_aug = self._augument(image, label)
+        image_aug, label_aug, weightmap_aug = self._transform(image, label, weightmap)
         if self.denoise:
             noise_x, noise_y, noise_mask = iu.denoise_xy(image_aug)
         else:
@@ -52,10 +72,12 @@ class DenoisegDataset(torch.utils.data.Dataset):
         return {
             "x": x,
             "y_denoise": noise_y,
-            "mask_denoise": noise_mask[None, ...],
+            "mask_denoise": noise_mask[None],
             "y_segmentation": y,
             "has_label": has_label,
+            "weightmap":weightmap_aug[None]
         }
+
 
 
 def setup_dataloader(
@@ -65,18 +87,23 @@ def setup_dataloader(
     augumentation_fn, 
     patch_size, 
     batch_size,
-    denoise_enabled = True
+    denoise_enabled = True,
+    weightmaps = None,
 ):
     def index_list_by_list(_list, indices):
         return [_list[i] for i in list(indices)]
     
     picked_imgs = index_list_by_list(images, pick_idc)
     picked_gts = index_list_by_list(ground_truths, pick_idc)
+    picked_wm =None
+    if weightmaps is not None:
+        picked_wm = index_list_by_list(weightmaps, pick_idc)
     
     dataset_ = DenoisegDataset(
         picked_imgs, 
         picked_gts, 
         augumentation_fn, 
+        weightmaps = picked_wm,
         denoise = denoise_enabled
     )
 
@@ -90,7 +117,7 @@ def setup_dataloader(
     )
 
 
-def prepare_dataloaders(images, ground_truths, config):
+def prepare_dataloaders(images, ground_truths, config,weightmaps = None):
     
     denoise_enabled = config.get("denoise_enabled",True)
     if not denoise_enabled:
@@ -135,7 +162,8 @@ def prepare_dataloaders(images, ground_truths, config):
         aug_train,
         config["patch_size"],
         config["batch_size"],
-        denoise_enabled
+        denoise_enabled = denoise_enabled,
+        weightmaps = weightmaps
     )
 
     aug_val = setup_augumentation(config["patch_size"])
@@ -146,7 +174,7 @@ def prepare_dataloaders(images, ground_truths, config):
         aug_val,
         config["patch_size"],
         config["batch_size"],
-        denoise_enabled
+        denoise_enabled = denoise_enabled
     )
     
     logger.info(f"Batches:{len(train_dataloader)=}")
