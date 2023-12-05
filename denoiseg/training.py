@@ -37,7 +37,7 @@ class EarlyStopper:
             self.counter = 0
         elif validation_loss > (self.min_validation_loss + self.min_delta):
             self.counter += 1
-            logger.debug(f"Early stopper's {self.patience=} update.")
+            logger.debug(f"Early stopper's patience {self.patience=} update. ({self.counter})")
             if self.counter >= self.patience:
                 logger.info(
                     f"Early stopper's {self.patience=} run out with {self.min_validation_loss=:.5}"
@@ -125,7 +125,7 @@ class DiceLoss(nn.Module):
 def step(model, targets, loss_fn, device="cpu"):
     device_targets = {k: v.to(device) for k, v in targets.items()}
     pred = model(device_targets["x"])
-    return loss_fn(pred, device_targets)
+    return loss_fn(device_targets,pred)
 
 
 def train_epoch(model, dataloader, optimizer, step_fn):
@@ -244,27 +244,37 @@ def resolve_loss(loss_name):
     return losses[loss_name]()
 
 
-def get_loss(loss_name="fl", device="cpu", denoise_loss_weight=1):
+def get_loss(
+    loss_name="fl", 
+    device="cpu", 
+    denoise_loss_weight=1,
+    denoise_enabled = True
+):
+    logger.info(f"Setting up loss. {denoise_loss_weight=}, {denoise_enabled=}")
     seg_loss = resolve_loss(loss_name).to(device)
     loss_denoise = nn.MSELoss().to(device)
 
-    def calc_loss(prediction, targets):
+    def calc_loss(targets, prediction):
         y_segmentation = targets["y_segmentation"]
         has_label = targets["has_label"]
 
-        pred_segm = prediction[:, 1:]
+        pred_segm = prediction[:, -3:]
 
         ls_seg_pure = seg_loss(pred_segm, y_segmentation)
         ls_seg_only_valid = ls_seg_pure * has_label
         ls_seg = ls_seg_only_valid.mean()
+    
+        if denoise_enabled:
+            pred_denoise = prediction[:, 0][:, None, ...]
+            y_denoise = targets["y_denoise"]
+            mask_denoise = targets["mask_denoise"]
+            pred_denoise_masked = pred_denoise * mask_denoise
 
-        pred_denoise = prediction[:, 0][:, None, ...]
-        y_denoise = targets["y_denoise"]
-        mask_denoise = targets["mask_denoise"]
-        pred_denoise_masked = pred_denoise * mask_denoise
-        y_denoise_masked = y_denoise * mask_denoise
-        ls_denoise = loss_denoise(pred_denoise_masked, y_denoise_masked)
+            y_denoise_masked = y_denoise * mask_denoise
+            ls_denoise = loss_denoise(y_denoise_masked,pred_denoise_masked)
 
-        return (1 - denoise_loss_weight) * ls_seg + ls_denoise * denoise_loss_weight
+            return ls_seg  + ls_denoise * denoise_loss_weight
+        else:
+            return ls_seg
 
     return calc_loss

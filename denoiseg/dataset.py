@@ -3,24 +3,25 @@ import warnings
 
 import albumentations as A
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 import denoiseg.image_utils as iu
+import logging
+
+logger = logging.getLogger('denoiseg')
 
 
 class DenoisegDataset(torch.utils.data.Dataset):
-    def __init__(self, images, labels, crop_size, transform, repeat=1):
+    def __init__(self, images, labels, transform, denoise = True):
         self.images = images
         self.labels = labels
 
         self.transform = transform
-        self.crop_size = crop_size
-        self.repeat = repeat
+        self.denoise = denoise
 
     def __len__(self):
-        return len(self.images) * self.repeat
+        return len(self.images)
 
     def _augument(self, image, label):
         transformed = self.transform(image=image, mask=label)
@@ -29,10 +30,6 @@ class DenoisegDataset(torch.utils.data.Dataset):
         return tr_image, tr_label
 
     def __getitem__(self, idx):
-        if idx >= self.__len__():
-            raise IndexError()
-
-        idx = idx % len(self.images)
         image = self.images[idx]
         label = self.labels[idx]
 
@@ -41,12 +38,17 @@ class DenoisegDataset(torch.utils.data.Dataset):
             label = np.zeros_like(image)
 
         image_aug, label_aug = self._augument(image, label)
-        noise_x, noise_y, noise_mask = iu.denoise_xy(image_aug)
-
+        if self.denoise:
+            noise_x, noise_y, noise_mask = iu.denoise_xy(image_aug)
+        else:
+            noise_x = image_aug[None]
+            noise_y = image_aug[None]
+            noise_mask = np.zeros_like(image_aug)
+        
         y = iu.label_to_classes(label_aug)
         x = np.concatenate([noise_x] * 3, axis=0)
         has_label = np.expand_dims(np.array([has_label]), axis=(1, 2, 3))
-
+    
         return {
             "x": x,
             "y_denoise": noise_y,
@@ -62,21 +64,20 @@ def setup_dataloader(
     pick_idc, 
     augumentation_fn, 
     patch_size, 
-    dataset_repeat, 
-    batch_size
+    batch_size,
+    denoise_enabled = True
 ):
     def index_list_by_list(_list, indices):
         return [_list[i] for i in list(indices)]
-
+    
     picked_imgs = index_list_by_list(images, pick_idc)
     picked_gts = index_list_by_list(ground_truths, pick_idc)
     
     dataset_ = DenoisegDataset(
         picked_imgs, 
         picked_gts, 
-        patch_size, 
         augumentation_fn, 
-        repeat=dataset_repeat
+        denoise = denoise_enabled
     )
 
     # Shuffle is false because
@@ -91,9 +92,29 @@ def setup_dataloader(
 
 def prepare_dataloaders(images, ground_truths, config):
     
+    denoise_enabled = config.get("denoise_enabled",True)
+    if not denoise_enabled:
+        logger.info("Filtering out denoise images")
+        imgs_new = []
+        gts_new = []
+        ig = [(img,gt) for img,gt in zip(images,ground_truths) if gt is not None]
+        for img,gt in ig:
+            imgs_new.append(img)
+            gts_new.append(gt)
+        images =imgs_new
+        ground_truths = gts_new
+    
+    repeat = config["dataset_repeat"]
+    before_size = len(ground_truths)
+    
     train_idc, val_idc = fair_split_train_val_indices_to_batches(
-        ground_truths, config["batch_size"], config["validation_set_percentage"]
+        list(ground_truths)*repeat, 
+        config["batch_size"], 
+        config["validation_set_percentage"]
     )
+    
+    train_idc = np.mod(train_idc,before_size)
+    val_idc = np.mod(val_idc,before_size)
     
     aug_config = config["augumentation"]
     aug_train = setup_augumentation(
@@ -106,15 +127,15 @@ def prepare_dataloaders(images, ground_truths, config):
         noise_val=aug_config["noise_val"],
         rotate_deg=aug_config["rotate_deg"],
     )
-
+    
     train_dataloader = setup_dataloader(
         images,
         ground_truths,
         train_idc,
         aug_train,
         config["patch_size"],
-        config["dataset_repeat"],
         config["batch_size"],
+        denoise_enabled
     )
 
     aug_val = setup_augumentation(config["patch_size"])
@@ -124,9 +145,12 @@ def prepare_dataloaders(images, ground_truths, config):
         val_idc,
         aug_val,
         config["patch_size"],
-        config["dataset_repeat"],
         config["batch_size"],
+        denoise_enabled
     )
+    
+    logger.info(f"Batches:{len(train_dataloader)=}")
+    logger.info(f"Batches:{len(val_dataloader)=}")
 
     return train_dataloader, val_dataloader
 
@@ -197,44 +221,63 @@ def setup_augumentation(
 
 
 def batch_fair(is_denoise, batch_size):
+    
     training_examples = len(is_denoise)
-    assert training_examples > 0, f"Cannot batch. Not enouch {training_examples=}"
+    assert training_examples > 0, f"Cannot batch. Not enough {training_examples=}"
     if training_examples < batch_size:
         warnings.warn(f"Number of {training_examples=} is less than {batch_size=}")
 
-    denoise_idx = np.argwhere(is_denoise).flatten().copy()
-    np.random.shuffle(denoise_idx)
+    denoise_idx = list(np.argwhere(is_denoise).flatten())
+    segmantation_idx = list(np.argwhere(~is_denoise).flatten())
 
-    segmantation_idx = np.argwhere(~is_denoise).flatten().copy()
+    too_much = len(is_denoise)%batch_size
+    missing= (batch_size - too_much)%batch_size
+        
+    total_batchable = len(is_denoise)+missing
+    assert total_batchable % batch_size == 0,"It's not batchable"
+    
+    batch_num = int(total_batchable/batch_size)
+
+    ratio = len(denoise_idx)/len(is_denoise)
+    add_den = int(missing*ratio) 
+    add_seg = missing - add_den
+
+    denoise_idx.extend(denoise_idx[:add_den])
+    segmantation_idx.extend(segmantation_idx[:add_seg])
+
+    np.random.shuffle(denoise_idx)
     np.random.shuffle(segmantation_idx)
 
-    batches_num = int(np.ceil(training_examples / batch_size))
+    batches = []
+    for _ in range(batch_num):
+        ratio = len(denoise_idx)/(len(segmantation_idx)+len(denoise_idx))
+        take_den = int(ratio*(batch_size))    
+        batch = []
+        for i in range(take_den):
+            if len(denoise_idx)>0:
+                item = denoise_idx.pop()
+            batch.append(item)
 
-    batched_denoise = batched(denoise_idx, batches_num)
-    batched_segmentaiton = batched(segmantation_idx, batches_num)
+        take_seg = batch_size - len(batch)
 
-    batches_of_ids = []
-    for den, seg in zip(batched_denoise, batched_segmentaiton):
-        rest_num = batch_size - len(den) - len(seg)
-        rest = _pick_remaining(rest_num, denoise_idx, segmantation_idx)
+        segs = [segmantation_idx.pop() for _ in range(take_seg)]
+        batch.extend(segs)
 
-        batch = np.concatenate([den, seg, rest])
-        batches_of_ids.append(batch)
-        assert len(batch) == batch_size, f"{len(batch)=} {batch_size=}"
-    return np.array(batches_of_ids).astype(int)
+        assert len(batch) == batch_size
+        np.random.shuffle(batch)
+        batches.append(batch)
 
-
-def batched(array, n):
-    return [array[i::n] for i in range(n)]
-
+    return np.array(batches)
 
 def fair_split_train_val_indices_to_batches(labels, batch_size, val_size):
-    is_denoise = np.array([(label is None) for label in labels])
-
+    
+    is_nones = [(label is None) for label in labels]
+    is_denoise = np.array(is_nones)
+    
     batches = batch_fair(is_denoise, batch_size)
 
     assert np.unique([len(b) for b in batches]) == [batch_size]
-    assert len(np.unique(np.array(batches).flatten())) == len(labels)
+    #assert len(np.unique(np.array(batches).flatten())) == len(labels)
     assert batches.shape[0] * batches.shape[1] >= len(labels)
 
     val_batches_num = int(np.ceil(len(batches) * val_size))
@@ -245,34 +288,3 @@ def fair_split_train_val_indices_to_batches(labels, batch_size, val_size):
     val_idx = np.concatenate(val_batches)
 
     return train_idx, val_idx
-
-
-def _pick_random(n, array):
-    rand_idx = np.random.randint(0, high=len(array), size=(n,))
-    return array[rand_idx]
-
-
-def _pick_remaining(rest_num, denoise_idx, segmantation_idx):
-    if rest_num > 0 and len(denoise_idx) > 0:
-        return _pick_random(rest_num, denoise_idx)
-    elif rest_num > 0 and len(segmantation_idx) > 0:
-        return _pick_random(rest_num, segmantation_idx)
-    else:
-        return []
-
-
-def sample_ds(dataset, n):
-    tts = (t for t in dataset if np.sum(t["has_label"]) > 0)
-
-    for i, t in enumerate(itertools.islice(tts, 0, 15)):
-        if i >= n:
-            break
-        img = t["x"][0]
-        mask = t["y_segmentation"][0]
-        wm = np.squeeze(t["mask_denoise"])
-        imgs = [img, mask, wm]
-
-        _, axs = plt.subplots(1, len(imgs), figsize=(len(imgs) * 5, 5))
-
-        for ax, im in zip(axs, imgs):
-            ax.imshow(im, vmin=0, vmax=np.max(im), cmap="gray")
