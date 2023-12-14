@@ -15,7 +15,7 @@ class UNet(nn.Module):
         super().__init__()
 
         self.inc = ConvLayer(in_channels, start_filters, dropout=dropout)
-
+        self.depth = depth
         # Contracting path
         self.down = nn.ModuleList(
             [

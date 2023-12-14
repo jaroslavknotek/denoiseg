@@ -1,4 +1,3 @@
-import empatches
 import numpy as np
 import torch
 from tqdm.auto import tqdm
@@ -22,7 +21,9 @@ def run_training(
     device = 'cpu'
 ):
     
-    if np.log2(train_params['patch_size']) < train_params['model']['depth'] +2:
+    model_depth = train_params['model']['depth']
+    patch_size = train_params['patch_size']
+    if np.log2(patch_size) <  model_depth+2:
         raise Exception(
             f"Cannot have {patch_size=} and {model_depth=}"
         )
@@ -76,39 +77,24 @@ def run_training(
 def segment_many(
     model, 
     imgs,
-    gts,
-    patch_size,
-    patch_overlap = .5, 
     device='cpu'
 ):
     return [
-        segment_image(model, img, patch_size, patch_overlap, device=device)
-        for img, gt in tqdm(zip(imgs, gts), desc="Segmenting", total=len(imgs))
+        segment_image(model, img, device=device)
+        for img in tqdm(imgs, desc="Segmenting", total=len(imgs))
     ]
 
 
-def segment_image(model, img, patch_size=128, patch_overlap=0.75, device="cpu"):
+def segment_image(model, img, device="cpu",pad_stride = 32):
     img = _ensure_2d(img)
 
-    emp = empatches.EMPatches()
-    img_patches, indices = emp.extract_patches(
-        img, patchsize=patch_size, overlap=patch_overlap
-    )
-
-    patches_3ch = np.stack([img_patches] * 3, axis=1)
     with torch.no_grad():
-        patches_tensor = torch.from_numpy(patches_3ch).to(device)
-        patches_pred = model(patches_tensor)
-        patches_predictions = np.squeeze(patches_pred.cpu().detach().numpy())
-
-    layer_idxs = patches_predictions.shape[1]
-    layers = []
-    for i in range(layer_idxs):
-        foreground_patches = patches_predictions[:, i]
-        layer = emp.merge_patches(foreground_patches, indices, mode="avg")
-        layers.append(layer)
-    return layers
-
+        img_3d = np.stack([img]*3)
+        tensor = torch.from_numpy(img_3d).to(device)[None]
+        padded_tensor,pads = pad_to(tensor, pad_stride)
+        res_tensor = model(padded_tensor)
+        res_unp = unpad(res_tensor,pads) 
+        return np.squeeze(res_unp.cpu().detach().numpy())
 
 def _ensure_2d(img, ensure_float=True):
     match img.shape:
@@ -141,3 +127,32 @@ def _setup_paths_from_root(training_output_root):
     checkpoint_path = training_output_root_timestamped/'model-checkpoint-best.pth'
     
     return checkpoint_path,log_path
+import torch.nn.functional as F
+
+def pad_to(x, stride):
+    h, w = x.shape[-2:]
+
+    if h % stride > 0:
+        new_h = h + stride - h % stride
+    else:
+        new_h = h
+    if w % stride > 0:
+        new_w = w + stride - w % stride
+    else:
+        new_w = w
+    lh, uh = int((new_h-h) / 2), int(new_h-h) - int((new_h-h) / 2)
+    lw, uw = int((new_w-w) / 2), int(new_w-w) - int((new_w-w) / 2)
+    pads = (lw, uw, lh, uh)
+
+    # zero-padding by default.
+    # See others at https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.pad
+    out = F.pad(x, pads, "constant", 0)
+
+    return out, pads
+
+def unpad(x, pad):
+    if pad[2]+pad[3] > 0:
+        x = x[:,:,pad[2]:-pad[3],:]
+    if pad[0]+pad[1] > 0:
+        x = x[:,:,:,pad[0]:-pad[1]]
+    return x

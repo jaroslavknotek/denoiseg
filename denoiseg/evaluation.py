@@ -12,9 +12,7 @@ def evaluate_images(
     model, 
     imgs, 
     gts, 
-    patch_size=128, 
     foreground_thr=0.5,
-    patch_overlap = 0.5,
     metric=None, 
     device="cpu"
 ):
@@ -24,10 +22,7 @@ def evaluate_images(
 
     preds = seg.segment_many(
         model, 
-        imgs, 
-        gts,
-        patch_size,
-        patch_overlap = patch_overlap,
+        imgs,
         device=device
     )
     

@@ -9,7 +9,6 @@ from tqdm.auto import tqdm
 
 from skimage.measure import label
 from scipy.ndimage import distance_transform_edt
-
 import denoiseg.training as tr
 
 logger = logging.getLogger("denoiseg")
@@ -85,50 +84,19 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs,targets):
         # comment out if your model contains a sigmoid or equivalent activation layer
         # inputs = torch.sigmoid(inputs)
 
-        bce = F.binary_cross_entropy(inputs, targets, reduction=self.reduction)
+        bce = F.binary_cross_entropy(inputs,targets, reduction=self.reduction)
         bce_exp = torch.exp(-bce)
         return self.alpha * (1 - bce_exp) ** self.gamma * bce
-
-
-class DiceLoss(nn.Module):
-    def __init__(self, smooth=1, reduction="none"):
-        super(DiceLoss, self).__init__()
-        self.smooth = smooth
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        # comment out if your model contains a sigmoid or equivalent activation layer
-        # inputs = F.sigmoid(inputs)
-
-        # flatten label and prediction tensors
-        # inputs = inputs.view(-1)
-        # targets = targets.view(-1)
-
-        # intersection = (inputs * targets).sum()
-        intersection = inputs * targets
-        dice = (2.0 * intersection + self.smooth) / (
-            inputs.sum() + targets.sum() + self.smooth
-        )
-
-        loss = 1 - dice
-        if self.reduction == "none":
-            return loss
-        if self.reduction == "mean":
-            return torch.mean(loss)
-        if self.reduction == "sum":
-            return torch.sum(loss)
-        else:
-            raise ValueError()
 
 
 def step(model, targets, loss_fn, device="cpu"):
     device_targets = {k: v.to(device) for k, v in targets.items()}
     pred = model(device_targets["x"])
-    return loss_fn(device_targets,pred)
+    return loss_fn(pred, device_targets)
 
 
 def train_epoch(model, dataloader, optimizer, step_fn):
@@ -240,7 +208,6 @@ def setup_scheduler(optimizer, scheduler_patience):
 
 def resolve_loss(loss_name):
     losses = {
-        "dice": lambda: DiceLoss(reduction="none"),
         "bc": lambda: nn.BCEWithLogitsLoss(reduction="none"),
         "fl": lambda: FocalLoss(reduction="none"),
     }
@@ -257,28 +224,20 @@ def get_loss(
     seg_loss = resolve_loss(loss_name).to(device)
     loss_denoise = nn.MSELoss().to(device)
 
-    def calc_loss(targets, prediction):
-        y_segmentation = targets["y_segmentation"]
-        has_label = targets["has_label"]
-        weightmap = targets["weightmap"]
-
+    def calc_loss(prediction, targets):
         pred_segm = prediction[:, -3:]
 
-        ls_seg_pure = seg_loss(pred_segm, y_segmentation)
-        ls_seg_only_valid = ls_seg_pure * has_label
-        loss = (ls_seg_only_valid * weightmap).mean()
-    
+        ls_seg_pure = seg_loss(pred_segm, targets["y_segmentation"])
+        ls_seg_only_valid = ls_seg_pure * targets["weightmap"] * targets["has_label"] 
+        loss = ls_seg_only_valid.mean()
+        
         if denoise_enabled:
-            pred_denoise = prediction[:, 0][:, None, ...]
-            y_denoise = targets["y_denoise"]
-            mask_denoise = targets["mask_denoise"]
-            pred_denoise_masked = pred_denoise * mask_denoise
-
-            y_denoise_masked = y_denoise * mask_denoise
-            ls_denoise = loss_denoise(y_denoise_masked,pred_denoise_masked)
-
+            y_denoise = targets["y_denoise"]* targets["mask_denoise"]
+            pred_denoise = prediction[:, [0]] *targets["mask_denoise"]
             
+            ls_denoise = loss_denoise(y_denoise,pred_denoise)
             loss+= ls_denoise * denoise_loss_weight
+            
         
         return loss
 

@@ -55,10 +55,12 @@ def denoise_xy(image, noise_percent=0.2):
 
     mask[mask_indices_r, mask_indices_c] = 1
 
-    noise_from = image[replacement_indices[0], replacement_indices[1]]
+    
 
     noise_y = image[None]
     noise_x = np.copy(noise_y)
+    
+    noise_from = image[replacement_indices[0], replacement_indices[1]]
     noise_x[0, mask_indices_r, mask_indices_c] = noise_from
     return noise_x, noise_y, mask
 

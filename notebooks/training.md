@@ -72,7 +72,7 @@ import denoiseg.configuration as cfg
 default_params = cfg.get_default_config()
 
 custom = {
-    "patch_size":256,
+    "patch_size":128,
     "epochs":200,
     "patience":20,
     "dataset_repeat":50,
@@ -80,7 +80,7 @@ custom = {
     "validation_set_percentage":.4,
     "model":{
         "filters":8,
-        "depth":6,
+        "depth":5,
         "noise_val":0.001
     }
 }

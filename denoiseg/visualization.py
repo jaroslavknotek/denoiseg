@@ -2,7 +2,7 @@ import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import denoiseg.dataset as ds
-
+import denoiseg.instance_analysis as ia
 import matplotlib.patches
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -226,6 +226,6 @@ def _plot_f1_background(ax,nn=100):
     y = np.linspace(0, 1, nn)
     xv, yv = np.meshgrid(x, y)
 
-    f1_nn = np.array([ f1(yy,xx) for yy in y for xx in x ])
+    f1_nn = np.array([ ia.f1(yy,xx) for yy in y for xx in x ])
     f1_grid = (f1_nn.reshape((nn,nn)) % .1) > .05
     ax.imshow(f1_grid,alpha = .1,cmap='gray', extent=[0,1,1,0])

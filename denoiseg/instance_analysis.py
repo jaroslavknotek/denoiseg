@@ -12,7 +12,8 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 
-
+import logging
+logger = logging.getLogger('denoiseg')
 @dataclass
 class SegmentationInstance:
     """Instance Shape"""

@@ -34,13 +34,12 @@ class DenoisegDataset(torch.utils.data.Dataset):
         return len(self.images)
 
     def _transform(self, image, label,weightmap):
-        cmb = np.dstack([label,weightmap,weightmap])
-        transformed = self.transform(image=image, mask=cmb)
+        cmb = np.stack([label,weightmap])
+        transformed = self.transform(image=image, masks=cmb)
         tr_image = transformed["image"]
         
-        tr_cmp = transformed["mask"]
-        tr_label = tr_cmp[:,:,0]
-        tr_weightmap = tr_cmp[:,:,1]
+        tr_cmp = transformed["masks"]
+        tr_label,tr_weightmap = tr_cmp
         return tr_image, tr_label,tr_weightmap
 
     def __getitem__(self, idx):
@@ -74,7 +73,7 @@ class DenoisegDataset(torch.utils.data.Dataset):
             "y_denoise": noise_y,
             "mask_denoise": noise_mask[None],
             "y_segmentation": y,
-            "has_label": has_label,
+            "has_label": np.float32(has_label),
             "weightmap":weightmap_aug[None]
         }
 
