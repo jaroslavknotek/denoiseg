@@ -48,7 +48,7 @@ class DenoisegDataset(torch.utils.data.Dataset):
         
         image_aug, label_aug, weightmap_aug = self._transform(image, label, weightmap)
         
-        y = iu.label_to_classes(image_aug)
+        y = iu.label_to_classes(label_aug)
         x = np.concatenate([image_aug] * 3, axis=0)
     
         return {
