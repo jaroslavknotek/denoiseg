@@ -1,15 +1,15 @@
 import itertools
 import logging
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
+from scipy.ndimage import distance_transform_edt
+from skimage.measure import label
 from torch.functional import F
 from tqdm.auto import tqdm
 
-from skimage.measure import label
-from scipy.ndimage import distance_transform_edt
 import denoiseg.training as tr
 
 logger = logging.getLogger("denoiseg")
@@ -40,7 +40,9 @@ class EarlyStopper:
             self.counter = 0
         elif validation_loss > (self.min_validation_loss + self.min_delta):
             self.counter += 1
-            logger.debug(f"Early stopper's patience {self.patience=} update. ({self.counter})")
+            logger.debug(
+                f"Early stopper's patience {self.patience=} update. ({self.counter})"
+            )
             if self.counter >= self.patience:
                 logger.info(
                     f"Early stopper's {self.patience=} run out with {self.min_validation_loss=:.5}"
@@ -85,11 +87,11 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, inputs,targets):
+    def forward(self, inputs, targets):
         # comment out if your model contains a sigmoid or equivalent activation layer
         # inputs = torch.sigmoid(inputs)
 
-        bce = F.binary_cross_entropy(inputs,targets, reduction=self.reduction)
+        bce = F.binary_cross_entropy(inputs, targets, reduction=self.reduction)
         bce_exp = torch.exp(-bce)
         return self.alpha * (1 - bce_exp) ** self.gamma * bce
 
@@ -186,13 +188,14 @@ def train(
         except tr.StopTrainingException:
             break
 
-    return transform_losses(train_losses,validation_losses)
+    return transform_losses(train_losses, validation_losses)
 
 
 def _get_lr(optimizer):
     for param_group in optimizer.param_groups:
-        return param_group['lr']
-    
+        return param_group["lr"]
+
+
 def setup_scheduler(optimizer, scheduler_patience):
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, "min", patience=scheduler_patience
@@ -214,12 +217,7 @@ def resolve_loss(loss_name):
     return losses[loss_name]()
 
 
-def get_loss(
-    loss_name="fl", 
-    device="cpu", 
-    denoise_loss_weight=1,
-    denoise_enabled = True
-):
+def get_loss(loss_name="fl", device="cpu", denoise_loss_weight=1, denoise_enabled=True):
     logger.info(f"Setting up loss. {denoise_loss_weight=}, {denoise_enabled=}")
     seg_loss = resolve_loss(loss_name).to(device)
     loss_denoise = nn.MSELoss().to(device)
@@ -228,14 +226,13 @@ def get_loss(
         pred_segm = prediction[:, -3:]
 
         ls_seg_pure = seg_loss(pred_segm, targets["y"])
-        ls_seg_only_valid = ls_seg_pure * targets["weightmap"]  
+        ls_seg_only_valid = ls_seg_pure * targets["weightmap"]
         return ls_seg_only_valid.mean()
 
     return calc_loss
 
 
-def unet_weight_map(y, wc=None, w0 = 10, sigma = 5):
-    
+def unet_weight_map(y, wc=None, w0=10, sigma=5):
     labels = label(y)
     no_labels = labels == 0
     label_ids = sorted(np.unique(labels))[1:]
@@ -244,31 +241,27 @@ def unet_weight_map(y, wc=None, w0 = 10, sigma = 5):
         distances = np.zeros((y.shape[0], y.shape[1], len(label_ids)))
 
         for i, label_id in enumerate(label_ids):
-            distances[:,:,i] = distance_transform_edt(labels != label_id)
+            distances[:, :, i] = distance_transform_edt(labels != label_id)
 
         distances = np.sort(distances, axis=2)
-        d1 = distances[:,:,0]
-        d2 = distances[:,:,1]
-        w = w0 * np.exp(-1/2*((d1 + d2) / sigma)**2) * no_labels
-        
+        d1 = distances[:, :, 0]
+        d2 = distances[:, :, 1]
+        w = w0 * np.exp(-1 / 2 * ((d1 + d2) / sigma) ** 2) * no_labels
+
         if wc:
             class_weights = np.zeros_like(y)
             for k, v in wc.items():
                 class_weights[y == k] = v
             w = w + class_weights
         else:
-            w = w +1
+            w = w + 1
     else:
         w = np.zeros_like(y)
-    
+
     return w
 
-def transform_losses(train_loss,val_loss):
-    data = list(
-        zip(
-            train_loss,
-            val_loss
-        )
-    )
 
-    return pd.DataFrame(data,columns=['train','validation'])
+def transform_losses(train_loss, val_loss):
+    data = list(zip(train_loss, val_loss))
+
+    return pd.DataFrame(data, columns=["train", "validation"])

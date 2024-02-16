@@ -6,17 +6,13 @@ import numpy as np
 def load_mask(path):
     return load_image(path, norm_img=False)
 
+
 def load_bin_mask(path):
-    img = load_image(path, norm_img=False) 
-    return np.uint8(img>0)
+    img = load_image(path, norm_img=False)
+    return np.uint8(img > 0)
 
 
-def load_image(
-    path, 
-    ensure_2d=True, 
-    norm_img=True, 
-    crop_to_square=True
-):
+def load_image(path, ensure_2d=True, norm_img=True, crop_to_square=True):
     img = np.squeeze(imageio.imread(path))
 
     if ensure_2d:
@@ -35,7 +31,7 @@ def norm(img):
     img_max = np.max(img)
     img_min = np.min(img)
     if img_max == img_min:
-        return np.zeros_like(img,dtype = np.float32)
+        return np.zeros_like(img, dtype=np.float32)
 
     return (img - img_min) / (img_max - img_min)
 
@@ -50,16 +46,14 @@ def denoise_xy(image, noise_percent=0.2):
 
     replacement_offsets = np.random.randint(-2, 3, (2, num_sample))
     replacement_indices = mask_indices + replacement_offsets
-    replacement_indices[0] = np.mod(replacement_indices[0],h-1)
-    replacement_indices[1] = np.mod(replacement_indices[1],w-1)
+    replacement_indices[0] = np.mod(replacement_indices[0], h - 1)
+    replacement_indices[1] = np.mod(replacement_indices[1], w - 1)
 
     mask[mask_indices_r, mask_indices_c] = 1
 
-    
-
     noise_y = image[None]
     noise_x = np.copy(noise_y)
-    
+
     noise_from = image[replacement_indices[0], replacement_indices[1]]
     noise_x[0, mask_indices_r, mask_indices_c] = noise_from
     return noise_x, noise_y, mask
