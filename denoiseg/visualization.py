@@ -133,10 +133,9 @@ def sample_ds(images,ground_truths,training_params, weightmaps=None, n = 5):
         if i >= n:
             break
         img = t["x"][0]
-        mask = t["y_segmentation"][0]
-        den = np.squeeze(t["mask_denoise"])
+        mask = t["y"][0]
         wm = np.squeeze(t["weightmap"])
-        imgs = [img, mask, den,wm]
+        imgs = [img, mask, wm]
 
         _, axs = plt.subplots(1, len(imgs), figsize=(len(imgs) * 5, 5))
 
