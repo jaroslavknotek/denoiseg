@@ -175,7 +175,7 @@ def _create_default_model(
         decoder_channels=channels,
         encoder_depth=depth,
         in_channels=3,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-        classes=4,                      # model output channels (number of classes in your dataset)
+        classes=3,                      # model output channels (number of classes in your dataset)
         decoder_attention_type=decoder_attention_type,
         activation=activation
     )
