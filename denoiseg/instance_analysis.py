@@ -51,9 +51,8 @@ def sample_precision_recall(ground_truth, foreground, thresholds, component_limi
     ]
     precs_recs = np.array(precs_recs)
     vis_thresholds = np.array(thresholds)[None].T
-    precs_recs.shape, vis_thresholds.shape
     pr = np.hstack([precs_recs, vis_thresholds])
-    precs, recs, thr = pr.T  # [np.argsort(pr[:,0])].T
+    precs, recs, _ = pr.T
     f1s = np.array([f1(prec, rec) for prec, rec in zip(precs, recs)])
 
     return thr_imgs, precs, recs, f1s
@@ -69,22 +68,10 @@ def evaluate_match(images, ground_truths, predictions, test_names=None):
         test_names = [f"test_{i}" for i in range(len(images))]
 
     evaluations = {}
-<<<<<<< Updated upstream
-    
-    zipped = zip(test_names,images,ground_truths,predictions)
-    for (name,img,gt,pred) in tqdm(zipped,desc = 'Matching prec'):
-        
-        thr_imgs,precs,recs,f1s = sample_precision_recall(
-            gt,
-            pred[0],
-            thresholds
-        )
-=======
 
     zipped = zip(test_names, images, ground_truths, predictions)
     for name, img, gt, pred in tqdm(zipped, desc="Matching prec"):
-        thr_imgs, precs, recs, f1s = sample_precision_recall(gt, pred[1], thresholds)
->>>>>>> Stashed changes
+        _, precs, recs, f1s = sample_precision_recall(gt, pred[0], thresholds)
 
         imgs_prec_rec = [
             {"precision": p, "recall": r, "f1": f, "threshold": t}
@@ -194,9 +181,6 @@ def extract_features(
     segm_instance: SegmentationInstance
 ) -> SegmentationInstanceFeatures:
     contour = get_shape_contour(segm_instance.mask)
-    if len(contour) == 0:
-        plt.imshow(segm_instance.mask)
-        plt.show()
     (circle_x, circle_y), circle_radius = cv2.minEnclosingCircle(contour)
 
     # circle radius is from center of the circle to the CENTER of the furthest pixel
@@ -299,28 +283,6 @@ def get_shape_contour(binary_img):
 
     c = contours[0]
     return c[:, 0, :] - padding
-
-
-def _construct_weight_map(weights_dict):
-    # Remap arbitrary indices to integers
-    p_map = {}
-
-    for i, v in enumerate(weights_dict.keys()):
-        p_map[v] = i
-
-    l_keys = itertools.chain(
-        *(list(k for k in v.keys()) for v in weights_dict.values())
-    )
-    l_unique = np.unique(list(l_keys))
-    l_map = {}
-    for i, v in enumerate(l_unique):
-        l_map[v] = i
-
-    weights = np.zeros((len(p_map), len(l_map)))
-    for i, (p, pv) in enumerate(weights_dict.items()):
-        for l, lv in pv.items():
-            weights[p_map[p], l_map[l]] = lv
-    return weights, p_map, l_map
 
 
 def _pair_using_linear_sum_assignment(p_n, p_grains, l_n, l_grains, cap=500):
