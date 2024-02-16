@@ -128,9 +128,8 @@ def sample_ds(images,ground_truths,training_params, weightmaps=None, n = 5):
         weightmaps = weightmaps
     )
     
-    tts = (t for t in dataset if np.sum(t["has_label"]) > 0)
 
-    for i, t in enumerate(itertools.islice(tts, 0, 15)):
+    for i, t in enumerate(itertools.islice(dataset, 0, 15)):
         if i >= n:
             break
         img = t["x"][0]
