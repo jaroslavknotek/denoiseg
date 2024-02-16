@@ -1,6 +1,3 @@
-import itertools
-import warnings
-
 import albumentations as A
 import cv2
 import numpy as np
@@ -9,8 +6,7 @@ import torch
 import denoiseg.image_utils as iu
 import logging
 
-logger = logging.getLogger('denoiseg')
-
+logger = logging.getLogger('segmentation')
 
 class DenoisegDataset(torch.utils.data.Dataset):
     def __init__(
@@ -18,7 +14,6 @@ class DenoisegDataset(torch.utils.data.Dataset):
         images, 
         labels, 
         transform, 
-        denoise = True,
         weightmaps = None
     ):
         self.images = images
@@ -27,7 +22,6 @@ class DenoisegDataset(torch.utils.data.Dataset):
         assert len(images) == len(labels),f"{len(images)=}!={len(labels)=}"
         assert weightmaps is None or len(labels) == len(weightmaps),f"{len(weightmaps)=}!={len(labels)=}"
         self.transform = transform
-        self.denoise = denoise
         
 
     def __len__(self):
@@ -52,28 +46,14 @@ class DenoisegDataset(torch.utils.data.Dataset):
         if weightmap is None:
             weightmap = np.ones_like(image,dtype=np.float32)
         
-        has_label = label is not None
-        if not has_label:
-            label = np.zeros_like(image)
-
         image_aug, label_aug, weightmap_aug = self._transform(image, label, weightmap)
-        if self.denoise:
-            noise_x, noise_y, noise_mask = iu.denoise_xy(image_aug)
-        else:
-            noise_x = image_aug[None]
-            noise_y = image_aug[None]
-            noise_mask = np.zeros_like(image_aug)
         
-        y = iu.label_to_classes(label_aug)
-        x = np.concatenate([noise_x] * 3, axis=0)
-        has_label = np.expand_dims(np.array([has_label]), axis=(1, 2, 3))
+        y = iu.label_to_classes(image_aug)
+        x = np.concatenate([image_aug] * 3, axis=0)
     
         return {
             "x": x,
-            "y_denoise": noise_y,
-            "mask_denoise": noise_mask[None],
-            "y_segmentation": y,
-            "has_label": np.float32(has_label),
+            "y": y,
             "weightmap":weightmap_aug[None]
         }
 

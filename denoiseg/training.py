@@ -227,18 +227,9 @@ def get_loss(
     def calc_loss(prediction, targets):
         pred_segm = prediction[:, -3:]
 
-        ls_seg_pure = seg_loss(pred_segm, targets["y_segmentation"])
-        ls_seg_only_valid = ls_seg_pure * targets["weightmap"] * targets["has_label"] 
-        loss = ls_seg_only_valid.mean()
-        
-        if denoise_enabled:
-            y_denoise = targets["y_denoise"]* targets["mask_denoise"]
-            pred_denoise = prediction[:, [0]] *targets["mask_denoise"]
-            
-            ls_denoise = loss_denoise(y_denoise,pred_denoise)
-            loss+= ls_denoise * denoise_loss_weight
-            
-        return loss
+        ls_seg_pure = seg_loss(pred_segm, targets["y"])
+        ls_seg_only_valid = ls_seg_pure * targets["weightmap"]  
+        return ls_seg_only_valid.mean()
 
     return calc_loss
 
