@@ -28,11 +28,11 @@ def plot_precision_recall_curve(mean_evaluations,ax = None):
     
     _plot_f1_background(ax)
     
-    f1s = mean_evaluations['mean_f1s']
     thresholds =  mean_evaluations['thresholds']
     precs = mean_evaluations['mean_precisions']
     recs = mean_evaluations['mean_recalls']
-    
+    f1s = [ia.f1(p,r) for p,r in zip(precs,recs)]
+
     ax.plot(recs, precs)
     ax.set_title("Precision/Recall Chart")
     

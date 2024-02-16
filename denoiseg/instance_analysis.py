@@ -41,21 +41,32 @@ class SegmentationInstanceFeatures:
 
     
     
-def sample_precision_recall(ground_truth,foreground,thresholds):
-    
+def sample_precision_recall(
+    ground_truth,
+    foreground,
+    thresholds,
+    component_limit = 500
+):
+
     thr_imgs = [
         _threshold_foreground(foreground,thr) 
         for thr in thresholds
     ]
         
     precs_recs = [
-        _calc_prec_rec_from_pred(ground_truth,img) 
+        _calc_prec_rec_from_pred(
+            ground_truth,
+            img,component_limit = component_limit
+        ) 
         for img in thr_imgs
     ]
-    pr = np.array(precs_recs)
-    precs, recs = pr[np.argsort(pr[:,0])].T
+    precs_recs = np.array(precs_recs)
+    vis_thresholds = np.array(thresholds)[None].T
+    precs_recs.shape,vis_thresholds.shape
+    pr = np.hstack([precs_recs,vis_thresholds])
+    precs, recs,thr = pr.T # [np.argsort(pr[:,0])].T
     f1s = np.array([f1(prec,rec)  for prec,rec in zip(precs,recs)])
-    
+
     return thr_imgs,precs,recs,f1s
 
 def evaluate_match(images, ground_truths,predictions,test_names = None):
@@ -107,7 +118,7 @@ def match_precipitates(prediction,label,component_limit = 500):
     
     if p_n > component_limit or l_n > component_limit:
         logger.warning(
-            f"Too many components found #predictions:{p_n} #labels:{l_n}. Cropping"
+            f"Too many components found {component_limit=} #predictions:{p_n} #labels:{l_n}. Cropping"
         )
         p_n = min(p_n,component_limit)
         p_grains[p_grains>component_limit] = 0
@@ -395,7 +406,7 @@ def f1(precision, recall):
         return np.nan
     return 2*(precision * recall)/(precision + recall)
 
-def _calc_prec_rec_from_pred(y,p):    
+def _calc_prec_rec_from_pred(y,p,component_limit=500):    
 
     if (p == 1).all():
         return (0,1)
@@ -403,7 +414,7 @@ def _calc_prec_rec_from_pred(y,p):
         return (1,0)
     
     y = np.uint8(y)
-    df,_,_ = match_precipitates(p,y)
+    df,_,_ = match_precipitates(p,y,component_limit = component_limit)
     return _prec_rec(df)
 
 
