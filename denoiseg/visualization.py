@@ -1,11 +1,11 @@
 import itertools
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import denoiseg.dataset as ds
 import denoiseg.instance_analysis as ia
 import matplotlib.patches
 import numpy as np
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 import collections
 
@@ -125,7 +125,6 @@ def sample_ds(images,ground_truths,training_params, weightmaps=None, n = 5):
         images, 
         ground_truths, 
         sample_aug,
-        training_params.get('denoise_enabled',True),
         weightmaps = weightmaps
     )
     
@@ -210,21 +209,9 @@ def _get_shape_text(shape_class):
     else: 
         return 'Needle-like'
 
-
-def _norm(img):
-    m = np.min(img)
-    return (img - m)/(np.max(img)-m)
-
-def _save_imgs(eval_path, image_dict):
-    for k,v in image_dict.items():
-        path = eval_path/f"{k}.png" 
-        v = np.uint8(_norm(v)*255)
-        imageio.imwrite(path,v)
-
 def _plot_f1_background(ax,nn=100):
     x = np.linspace(0, 1, nn)
     y = np.linspace(0, 1, nn)
-    xv, yv = np.meshgrid(x, y)
 
     f1_nn = np.array([ ia.f1(yy,xx) for yy in y for xx in x ])
     f1_grid = (f1_nn.reshape((nn,nn)) % .1) > .05
