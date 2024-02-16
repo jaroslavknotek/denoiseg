@@ -58,7 +58,7 @@ def sample_precision_recall(ground_truth,foreground,thresholds):
     
     return thr_imgs,precs,recs,f1s
 
-def evaluate_match(images, ground_truths,predictions):
+def evaluate_match(images, ground_truths,predictions,test_names = None):
     thr_low = .4
     thr_high = .8
     n = 5
@@ -68,12 +68,14 @@ def evaluate_match(images, ground_truths,predictions):
         [1.0]
     ])
 
+    if test_names is None:
+        test_names = [f'test_{i}' for i in range(len(images))] 
+        
     evaluations = {}
-    for i,(img,gt,pred) in tqdm(enumerate(zip(images,ground_truths,predictions)),desc = 'Matching prec'):
-        name = f'test_{i}'
-
-
-        #logger.info(f"Sampling precision recall ({len(thresholds)})")
+    
+    zipped = zip(test_names,images,ground_truths,predictions)
+    for (name,img,gt,pred) in tqdm(zipped,desc = 'Matching prec'):
+        
         thr_imgs,precs,recs,f1s = sample_precision_recall(
             gt,
             pred[1],
@@ -142,7 +144,10 @@ def mean_evaluations(evaluations):
     f1ss = []
 
     for k,v in evaluations.items():
-        imgs_prec_rec = v['samples']        
+        if "samples" in v: # BACKWARDS 20240209 comabtility. WIll be removed
+            imgs_prec_rec = v['samples']        
+        else:
+            imgs_prec_rec = v
         thresholds = [ vv['threshold'] for vv in imgs_prec_rec]
         precisions = [ vv['precision'] for vv in imgs_prec_rec]
         recalls = [ vv['recall'] for vv in imgs_prec_rec]

@@ -10,18 +10,17 @@ import matplotlib.pyplot as plt
 import collections
 
 
-def plot_loss(loss_dict,figsize = None):
-    fig,ax = plt.subplots(1,1,figsize=figsize)
+def plot_loss(loss_df,figsize = None,ax=None):
     
-    ax.set_title("Training Loss on Dataset")
-    ax.set_xlabel("Epoch #")
-    ax.set_ylabel("Loss")
-
-    ax.plot(loss_dict["train_loss"], label="train_loss")
-    ax.plot(loss_dict["val_loss"], label="val_loss")
+    loss_df.plot(
+        xlabel='Epochs',
+        ylabel='Loss [log]',
+        logy=True,
+        title = "Training Loss on Dataset",
+        figsize = figsize,
+        ax = ax
+    )
     
-    ax.legend(loc="upper right")
-    return fig
 
 def plot_precision_recall_curve(mean_evaluations,ax = None):
     if ax is None:
@@ -105,6 +104,7 @@ def plot_row(imgs, vmin_vmax=None, cell_size=5, figsize = None):
             ax.imshow(im, vmin=vmin_vmax[0], vmax=vmin_vmax[1],cmap='gray')
         else:
             ax.imshow(im)
+    return axs
 
 
 def sample_ds(images,ground_truths,training_params, weightmaps=None, n = 5):

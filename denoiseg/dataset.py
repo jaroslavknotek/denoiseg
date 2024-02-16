@@ -88,6 +88,7 @@ def setup_dataloader(
     batch_size,
     denoise_enabled = True,
     weightmaps = None,
+    shuffle = False,
 ):
     def index_list_by_list(_list, indices):
         return [_list[i] for i in list(indices)]
@@ -112,10 +113,17 @@ def setup_dataloader(
     return torch.utils.data.DataLoader(
         dataset_, 
         batch_size=batch_size, 
-        shuffle=False
+        shuffle=shuffle
     )
 
-
+def split(arr,split_per):
+    if len(arr)==0:
+        logger.warning("Splitting empty array to train/val")
+    n = int(len(arr)*split_per)
+    if n ==0:
+        logger.warning(f"Validation has 0 size. Increase validatio split {split_per=}")
+    return arr[n:],arr[:n]
+    
 def prepare_dataloaders(images, ground_truths, config,weightmaps = None):
     
     denoise_enabled = config.get("denoise_enabled",True)
@@ -130,17 +138,24 @@ def prepare_dataloaders(images, ground_truths, config,weightmaps = None):
         images =imgs_new
         ground_truths = gts_new
     
-    repeat = config["dataset_repeat"]
-    before_size = len(ground_truths)
+    is_denoise = np.array([ gt is None for gt in ground_truths])
+    denoise_idx = np.argwhere(is_denoise).flatten()
     
-    train_idc, val_idc = fair_split_train_val_indices_to_batches(
-        list(ground_truths)*repeat, 
-        config["batch_size"], 
-        config["validation_set_percentage"]
+    denoise_train_idx,denoise_val_idx = split(
+        denoise_idx,
+        config['validation_set_percentage']
     )
     
-    train_idc = np.mod(train_idc,before_size)
-    val_idc = np.mod(val_idc,before_size)
+    segmantation_idx = np.argwhere(~is_denoise).flatten()
+    
+    seg_train_idx,seg_val_idx = split(
+        segmantation_idx,
+        config['validation_set_percentage']
+    )
+    
+    train_idc = np.concatenate([denoise_train_idx,seg_train_idx])
+    val_idc = np.concatenate([denoise_val_idx,seg_val_idx])
+    
     
     aug_config = config["augumentation"]
     aug_train = setup_augumentation(
@@ -162,7 +177,8 @@ def prepare_dataloaders(images, ground_truths, config,weightmaps = None):
         config["patch_size"],
         config["batch_size"],
         denoise_enabled = denoise_enabled,
-        weightmaps = weightmaps
+        weightmaps = weightmaps,
+        shuffle = True
     )
 
     aug_val = setup_augumentation(config["patch_size"])
@@ -247,71 +263,71 @@ def setup_augumentation(
     return A.Compose(transform_list)
 
 
-def batch_fair(is_denoise, batch_size):
+# def batch_fair(is_denoise, batch_size):
     
-    training_examples = len(is_denoise)
-    assert training_examples > 0, f"Cannot batch. Not enough {training_examples=}"
-    if training_examples < batch_size:
-        warnings.warn(f"Number of {training_examples=} is less than {batch_size=}")
+#     training_examples = len(is_denoise)
+#     assert training_examples > 0, f"Cannot batch. Not enough {training_examples=}"
+#     if training_examples < batch_size:
+#         warnings.warn(f"Number of {training_examples=} is less than {batch_size=}")
 
-    denoise_idx = list(np.argwhere(is_denoise).flatten())
-    segmantation_idx = list(np.argwhere(~is_denoise).flatten())
+#     denoise_idx = list(np.argwhere(is_denoise).flatten())
+#     segmantation_idx = list(np.argwhere(~is_denoise).flatten())
 
-    too_much = len(is_denoise)%batch_size
-    missing= (batch_size - too_much)%batch_size
+#     too_much = len(is_denoise)%batch_size
+#     missing= (batch_size - too_much)%batch_size
         
-    total_batchable = len(is_denoise)+missing
-    assert total_batchable % batch_size == 0,"It's not batchable"
+#     total_batchable = len(is_denoise)+missing
+#     assert total_batchable % batch_size == 0,"It's not batchable"
     
-    batch_num = int(total_batchable/batch_size)
+#     batch_num = int(total_batchable/batch_size)
 
-    ratio = len(denoise_idx)/len(is_denoise)
-    add_den = int(missing*ratio) 
-    add_seg = missing - add_den
+#     ratio = len(denoise_idx)/len(is_denoise)
+#     add_den = int(missing*ratio) 
+#     add_seg = missing - add_den
 
-    denoise_idx.extend(denoise_idx[:add_den])
-    segmantation_idx.extend(segmantation_idx[:add_seg])
+#     denoise_idx.extend(denoise_idx[:add_den])
+#     segmantation_idx.extend(segmantation_idx[:add_seg])
 
-    np.random.shuffle(denoise_idx)
-    np.random.shuffle(segmantation_idx)
+#     np.random.shuffle(denoise_idx)
+#     np.random.shuffle(segmantation_idx)
 
-    batches = []
-    for _ in range(batch_num):
-        ratio = len(denoise_idx)/(len(segmantation_idx)+len(denoise_idx))
-        take_den = int(ratio*(batch_size))    
-        batch = []
-        for i in range(take_den):
-            if len(denoise_idx)>0:
-                item = denoise_idx.pop()
-            batch.append(item)
+#     batches = []
+#     for _ in range(batch_num):
+#         ratio = len(denoise_idx)/(len(segmantation_idx)+len(denoise_idx))
+#         take_den = int(ratio*(batch_size))    
+#         batch = []
+#         for i in range(take_den):
+#             if len(denoise_idx)>0:
+#                 item = denoise_idx.pop()
+#             batch.append(item)
 
-        take_seg = batch_size - len(batch)
+#         take_seg = batch_size - len(batch)
 
-        segs = [segmantation_idx.pop() for _ in range(take_seg)]
-        batch.extend(segs)
+#         segs = [segmantation_idx.pop() for _ in range(take_seg)]
+#         batch.extend(segs)
 
-        assert len(batch) == batch_size
-        np.random.shuffle(batch)
-        batches.append(batch)
+#         assert len(batch) == batch_size
+#         np.random.shuffle(batch)
+#         batches.append(batch)
 
-    return np.array(batches)
+#     return np.array(batches)
 
-def fair_split_train_val_indices_to_batches(labels, batch_size, val_size):
+# def fair_split_train_val_indices_to_batches(labels, batch_size, val_size):
     
-    is_nones = [(label is None) for label in labels]
-    is_denoise = np.array(is_nones)
+#     is_nones = [(label is None) for label in labels]
+#     is_denoise = np.array(is_nones)
     
-    batches = batch_fair(is_denoise, batch_size)
+#     batches = batch_fair(is_denoise, batch_size)
 
-    assert np.unique([len(b) for b in batches]) == [batch_size]
-    #assert len(np.unique(np.array(batches).flatten())) == len(labels)
-    assert batches.shape[0] * batches.shape[1] >= len(labels)
+#     assert np.unique([len(b) for b in batches]) == [batch_size]
+#     #assert len(np.unique(np.array(batches).flatten())) == len(labels)
+#     assert batches.shape[0] * batches.shape[1] >= len(labels)
 
-    val_batches_num = int(np.ceil(len(batches) * val_size))
-    val_batches = batches[-val_batches_num:]
-    train_batches = batches[:-val_batches_num]
+#     val_batches_num = int(np.ceil(len(batches) * val_size))
+#     val_batches = batches[-val_batches_num:]
+#     train_batches = batches[:-val_batches_num]
 
-    train_idx = np.concatenate(train_batches)
-    val_idx = np.concatenate(val_batches)
+#     train_idx = np.concatenate(train_batches)
+#     val_idx = np.concatenate(val_batches)
 
-    return train_idx, val_idx
+#     return train_idx, val_idx

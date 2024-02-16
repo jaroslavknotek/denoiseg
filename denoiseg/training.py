@@ -1,6 +1,7 @@
 import itertools
 import logging
 
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -185,8 +186,7 @@ def train(
         except tr.StopTrainingException:
             break
 
-    loss_dict = {"train_loss": train_losses, "val_loss": validation_losses}
-    return loss_dict
+    return transform_losses(train_losses,validation_losses)
 
 
 def _get_lr(optimizer):
@@ -238,7 +238,6 @@ def get_loss(
             ls_denoise = loss_denoise(y_denoise,pred_denoise)
             loss+= ls_denoise * denoise_loss_weight
             
-        
         return loss
 
     return calc_loss
@@ -272,3 +271,13 @@ def unet_weight_map(y, wc=None, w0 = 10, sigma = 5):
         w = np.zeros_like(y)
     
     return w
+
+def transform_losses(train_loss,val_loss):
+    data = list(
+        zip(
+            train_loss,
+            val_loss
+        )
+    )
+
+    return pd.DataFrame(data,columns=['train','validation'])

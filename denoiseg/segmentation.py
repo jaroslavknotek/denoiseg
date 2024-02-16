@@ -1,15 +1,17 @@
 import numpy as np
 import torch
 from tqdm.auto import tqdm
-
-
+import segmentation_models_pytorch as smp
+import torch.nn.functional as F
 import denoiseg.dataset as ds
-import denoiseg.unet as unet
 import denoiseg.training as training
 from datetime import datetime
 import denoiseg.utils as utils
 
+import logging
 import json
+
+logger = logging.getLogger('denoiseg')
 
 def run_training(
     images,
@@ -18,7 +20,10 @@ def run_training(
     training_output_dir, 
     weightmaps = None,
     model = None,
-    device = 'cpu'
+    device = 'cpu',
+    train_dataloader = None,
+    val_dataloader = None,
+    loss_fn = None
 ):
     
     model_depth = train_params['model']['depth']
@@ -34,28 +39,26 @@ def run_training(
     with open(checkpoint_path.parent/'training_params.json','w') as f:
         json.dump(train_params,f)
 
-    train_dataloader,val_dataloader = ds.prepare_dataloaders(
-        images,
-        ground_truths,
-        train_params,
-        weightmaps=weightmaps
-    )
-    if model is None:
-        model_params = train_params['model']
-        logger.info(f"Using default unet model with {model_params=}")
-        model = unet.UNet(
-            start_filters=model_params['filters'], 
-            depth=model_params['depth'], 
-            in_channels=3,
-            out_channels=4
+    if train_dataloader is None and val_dataloader is None:
+        train_dataloader,val_dataloader = ds.prepare_dataloaders(
+            images,
+            ground_truths,
+            train_params,
+            weightmaps=weightmaps
         )
+    assert train_dataloader is not None, val_dataloader is not None
+    
+    if model is None:
+        model = _create_default_model(train_params['model'])
 
-    loss_fn = training.get_loss(
-        train_params['loss_function'],
-        device = device,
-        denoise_loss_weight = train_params.get('denoise_loss_weight',0),
-        denoise_enabled = train_params.get('denoise_enabled',False)
-    )
+
+    if loss_fn is None:
+        loss_fn = training.get_loss(
+            train_params['loss_function'],
+            device = device,
+            denoise_loss_weight = train_params.get('denoise_loss_weight',0),
+            denoise_enabled = train_params.get('denoise_enabled',False)
+        )
     
     logger.info("Training started")
     losses = training.train(
@@ -127,7 +130,6 @@ def _setup_paths_from_root(training_output_root):
     checkpoint_path = training_output_root_timestamped/'model-checkpoint-best.pth'
     
     return checkpoint_path,log_path
-import torch.nn.functional as F
 
 def pad_to(x, stride):
     h, w = x.shape[-2:]
@@ -156,3 +158,24 @@ def unpad(x, pad):
     if pad[0]+pad[1] > 0:
         x = x[:,:,:,pad[0]:-pad[1]]
     return x
+
+
+def _create_default_model(
+    model_params,
+    encoder = "resnet18",
+    activation = 'sigmoid',
+    decoder_attention_type = None #"scse"
+):
+    logger.info(f"Using default unet model with {model_params=}")    
+    depth  = model_params['depth']
+    channels = np.flip(model_params['filters'] * (2 ** np.arange(depth)))
+    return smp.Unet(
+        encoder_name=encoder,        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+        encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
+        decoder_channels=channels,
+        encoder_depth=depth,
+        in_channels=3,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        classes=4,                      # model output channels (number of classes in your dataset)
+        decoder_attention_type=decoder_attention_type,
+        activation=activation
+    )
