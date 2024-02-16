@@ -129,11 +129,10 @@ def sample_ds(images,ground_truths,training_params, weightmaps=None, n = 5):
     )
     
 
-    for i, t in enumerate(itertools.islice(dataset, 0, 15)):
-        if i >= n:
-            break
+    for i, t in enumerate(itertools.islice(dataset, 0, n)):
         img = np.squeeze(t["x"])[0]
         mask = np.squeeze(t["y"])[0]
+        
         wm = np.squeeze(t["weightmap"])
         imgs = [img, mask, wm]
 

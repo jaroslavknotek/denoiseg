@@ -89,7 +89,7 @@ def evaluate_match(images, ground_truths,predictions,test_names = None):
         
         thr_imgs,precs,recs,f1s = sample_precision_recall(
             gt,
-            pred[1],
+            pred[0],
             thresholds
         )
 

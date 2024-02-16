@@ -49,7 +49,7 @@ class DenoisegDataset(torch.utils.data.Dataset):
         image_aug, label_aug, weightmap_aug = self._transform(image, label, weightmap)
         
         y = iu.label_to_classes(label_aug)
-        x = np.concatenate([image_aug] * 3, axis=0)
+        x = np.stack([image_aug] * 3)
     
         return {
             "x": x,
@@ -83,8 +83,7 @@ def setup_dataloader(
         picked_imgs, 
         picked_gts, 
         augumentation_fn, 
-        weightmaps = picked_wm,
-        denoise = denoise_enabled
+        weightmaps = picked_wm
     )
 
     # Shuffle is false because
@@ -216,7 +215,7 @@ def setup_augumentation(
         ]
     if noise_val is not None:
         transform_list += [
-            A.augmentations.transforms.GaussNoise(noise_val, p=1),
+            A.augmentations.transforms.GaussNoise(noise_val, p=.5),
         ]
 
     if blur_sharp_power is not None:

@@ -28,7 +28,7 @@ def evaluate_images(
     
     metrics = []
     for gt, pred in zip(gts, preds):
-        _, fg, _, _ = pred
+        fg = pred[0]
         metric_res = metric(gt,fg)
         metrics.append(metric_res)
     return preds, np.squeeze(metrics)
